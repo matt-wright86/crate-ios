@@ -1,0 +1,46 @@
+# Runs crate's tests on every pull request and on main: in the Simulator
+# (Scripts/test.sh), the unit tests, inside the app, and the UI tests, which
+# drive it; and on the Mac itself, the claim of the code region's gap
+# (Scripts/test-code-region.sh).
+#
+# The libraries come prebuilt and pinned, as Scripts/fetch-*.sh get them on a
+# Mac, the same ones the ipa workflow builds with.
+name: test
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo xcode-select -s /Applications/Xcode_27.1.app
+      - run: brew install xcodegen
+      - name: Frameworks
+        run: |
+          Scripts/fetch-frameworks.sh
+          Scripts/fetch-stikjit.sh
+          Scripts/fetch-crate.sh
+      - name: Code region
+        run: Scripts/test-code-region.sh
+      - name: Test
+        run: Scripts/test.sh
+      # What failed, with the UI tests' screenshots, to open in Xcode.
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/test/Logs/Test/*.xcresult
