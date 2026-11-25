@@ -87,6 +87,8 @@ final class JITSession {
     /// Checks at launch: when a debugger is already attached (crate was
     /// started from one), claims the region in the background.
     func start() {
+        // Before Settings can show a size no longer offered.
+        _ = CodeRegion.chosen
         Task { await check() }
     }
 
@@ -95,7 +97,7 @@ final class JITSession {
     func check() async {
         if case .on = state { return }
         state = .checking
-        let sizeMB = UserDefaults.standard.object(forKey: SettingsKey.codeRegionMB) as? Int ?? CodeRegion.standard
+        let sizeMB = CodeRegion.chosen
         let (state, region) = await Task.detached(priority: .userInitiated) {
             Self.claim(sizeMB: sizeMB)
         }.value
