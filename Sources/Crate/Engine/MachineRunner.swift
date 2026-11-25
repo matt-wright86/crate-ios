@@ -80,12 +80,22 @@ final class MachineRunner {
             AppLog.write("vm: \(files.disk.path) isn't writable")
             return
         }
+        // After the last VM's memory is given back, above.
+        let available = Int(os_proc_available_memory() >> 20)
+        guard let memoryMiB = Settings.memory(askedGB: vm.memoryGB, available: available) else {
+            phase = .failed("iOS is letting crate use only \(available) MB more, and \(vm.name) needs over "
+                            + "\(Settings.leastMemoryMiB) MB. A smaller code region, in Settings, leaves more for the VM.")
+            AppLog.write("vm: not starting \(vm.name): \(available) MiB available, "
+                         + "less than the \(Settings.leastMemoryMiB) MiB a VM is given at least")
+            return
+        }
         phase = .starting
         machineID = vm.id
         console.reset()
         display.reset()
-        let settings = Settings(vm: vm, files: files, display: display)
-        AppLog.write("vm: starting \(vm.name): \(settings.cpus) CPUs, \(settings.memoryMiB) MiB, "
+        let settings = Settings(vm: vm, files: files, display: display, memoryMiB: memoryMiB)
+        AppLog.write("vm: starting \(vm.name): \(settings.cpus) CPUs, \(settings.memoryMiB) MiB "
+                     + "(\(vm.memoryGB * 1024) asked, \(available) available), "
                      + "code \(region.size >> 20) MiB; \(settings.commandLine)")
         let console = self.console
         let display = self.display
@@ -139,10 +149,10 @@ final class MachineRunner {
         let commandLine: String
         let displayModes: [crate_display_mode]
 
-        init(vm: Machine, files: GuestFiles, display: DisplayBridge) {
+        init(vm: Machine, files: GuestFiles, display: DisplayBridge, memoryMiB: Int) {
             // A core left for the app and iOS.
             cpus = max(1, min(vm.cpuCount, ProcessInfo.processInfo.activeProcessorCount - 1))
-            memoryMiB = Self.memory(askedGB: vm.memoryGB)
+            self.memoryMiB = memoryMiB
             kernel = files.kernel.path
             initrd = files.initrd.path
             disk = files.disk.path
@@ -167,15 +177,23 @@ final class MachineRunner {
             return sizes.map { crate_display_mode(width: UInt32($0.0), height: UInt32($0.1)) }
         }
 
-        /// What the VM asked for, unless that wouldn't fit beside the app in
-        /// what iOS lets crate have: the code region is already in the app's
-        /// footprint, and the guest's memory counts as it touches it.
-        static func memory(askedGB: Int) -> Int {
+        /// The least a VM is given, in MiB: what a desktop needs to start.
+        static let leastMemoryMiB = 1024
+
+        /// What the VM asked for, in MiB, unless that wouldn't fit beside the
+        /// app in the `available` MiB iOS still lets crate have
+        /// (os_proc_available_memory): the code region is already in the
+        /// app's footprint, and the guest's memory counts as it touches it.
+        /// Never less than the least a VM is given, at the headroom's cost;
+        /// nil when even that is more than iOS will let crate have, since
+        /// iOS would close crate as the guest filled its memory.
+        static func memory(askedGB: Int, available: Int) -> Int? {
             let asked = askedGB * 1024
-            let available = Int(os_proc_available_memory() >> 20)
+            // The Simulator, which has no limit to report.
             guard available > 0 else { return asked }
+            guard available > leastMemoryMiB else { return nil }
             let headroom = 768
-            let fits = max(1024, (available - headroom) / 2 * 2)
+            let fits = max(leastMemoryMiB, (available - headroom) / 2 * 2)
             return min(asked, fits)
         }
 
