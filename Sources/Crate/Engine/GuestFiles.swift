@@ -7,8 +7,9 @@ import Foundation
 /// Where a VM's guest lives: the kernel, its initial ramdisk, and the disk, in
 /// `Library/Application Support/VMs/<the VM's ID>/`.
 struct GuestFiles {
-    /// Every VM's folder.
-    static let root = URL.applicationSupportDirectory.appendingPathComponent("VMs", isDirectory: true)
+    /// Every VM's folder. A variable for the tests, which put VMs of their
+    /// own in a folder of their own.
+    static var root = URL.applicationSupportDirectory.appendingPathComponent("VMs", isDirectory: true)
 
     let directory: URL
 

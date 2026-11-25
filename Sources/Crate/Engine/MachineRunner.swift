@@ -141,7 +141,7 @@ final class MachineRunner {
 
     /// What the machine is given: the VM's settings, held to what this iPhone
     /// can spare.
-    nonisolated private struct Settings: Sendable {
+    nonisolated struct Settings: Sendable {
         let cpus: Int
         let memoryMiB: Int
         let kernel: String

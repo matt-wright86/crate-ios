@@ -20,6 +20,8 @@ final class MachineStore {
     /// False while showing a made-up list (`--empty`, `--samples`), which
     /// must never replace the real one.
     @ObservationIgnored private var persists = true
+    /// Where the list is saved: the app's own, but for the tests.
+    private let defaults: UserDefaults
 
     private static let machinesKey = "machines"
     /// Folders found beside a list that couldn't be read whole, with no
@@ -27,8 +29,8 @@ final class MachineStore {
     /// the VM of an entry that was lost.
     private static let keptFoldersKey = "machines.keptFolders"
 
-    init() {
-        let defaults = UserDefaults.standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         // From when a starred VM booted at launch.
         defaults.removeObject(forKey: "defaultMachineID")
         let (saved, readable) = Self.load(defaults.data(forKey: Self.machinesKey))
@@ -64,7 +66,7 @@ final class MachineStore {
     }
 
     private static func setAside(_ data: Data, reason: String) {
-        let url = URL.applicationSupportDirectory
+        let url = GuestFiles.root.deletingLastPathComponent()
             .appendingPathComponent("machines-unreadable-\(Int(Date.now.timeIntervalSince1970)).json")
         try? data.write(to: url, options: .atomic)
         AppLog.write("store: the saved list \(reason); kept it as \(url.lastPathComponent)")
@@ -142,12 +144,12 @@ final class MachineStore {
 
     private func keepUnclaimedFolders() {
         let known = Set(machines.map(\.id.uuidString))
-        var kept = Set(UserDefaults.standard.stringArray(forKey: Self.keptFoldersKey) ?? [])
+        var kept = Set(defaults.stringArray(forKey: Self.keptFoldersKey) ?? [])
         for folder in Self.folders where !known.contains(folder.lastPathComponent)
             && !FileManager.default.fileExists(atPath: GuestFiles.record(in: folder).path) {
             kept.insert(folder.lastPathComponent)
         }
-        UserDefaults.standard.set(Array(kept).sorted(), forKey: Self.keptFoldersKey)
+        defaults.set(Array(kept).sorted(), forKey: Self.keptFoldersKey)
     }
 
     /// Deletes VM folders no VM in the list names and that hold no record:
@@ -156,7 +158,7 @@ final class MachineStore {
     /// one kept after an unreadable list.
     private func removeStrayFiles() {
         let known = Set(machines.map(\.id.uuidString))
-        let kept = Set(UserDefaults.standard.stringArray(forKey: Self.keptFoldersKey) ?? [])
+        let kept = Set(defaults.stringArray(forKey: Self.keptFoldersKey) ?? [])
         for folder in Self.folders where !known.contains(folder.lastPathComponent) {
             if kept.contains(folder.lastPathComponent) {
                 AppLog.write("store: kept \(folder.lastPathComponent), found beside an unreadable list")
@@ -174,7 +176,7 @@ final class MachineStore {
     private func save() {
         let encoder = JSONEncoder()
         if persists, let data = try? encoder.encode(machines) {
-            UserDefaults.standard.set(data, forKey: Self.machinesKey)
+            defaults.set(data, forKey: Self.machinesKey)
         }
         // Records even for a made-up list: a VM installed while one shows is
         // then found by its folder at the next launch.

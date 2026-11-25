@@ -252,6 +252,30 @@ the same on GitHub: it builds them all, publishes the release with an
 attestation, and shows the lines to pin. While the repository is private it
 skips itself.
 
+### Tests
+
+`./Scripts/test.sh` runs the tests in the Simulator, as the `test` workflow
+does for every pull request and for `main`: the unit tests in
+`Tests/CrateTests`, which run inside the app, and the UI tests in
+`Tests/CrateUITests`, which drive it.
+
+    ./Scripts/test.sh                                   # on the first iPhone Simulator there is
+    ./Scripts/test.sh "iPhone 17"                       # on one by name, or by UDID
+    ./Scripts/test.sh "iPhone 17" -only-testing:CrateTests/SeedDiskTests
+
+A VM can't run in the Simulator, which has no JIT, so the tests cover what
+doesn't need one: the first-boot disk and its password hash, the catalog, the
+list of VMs and what a launch does with their folders, the memory a VM is
+given, the keyboard's keys, sizes and their text, and what Settings offers.
+One UI test installs a VM whole, a 1.6 GB download, and only when asked for:
+
+    TEST_RUNNER_CRATE_TEST_INSTALL=1 ./Scripts/test.sh "iPhone 17" \
+        -only-testing:CrateUITests/FixesUITests/testInstallingAVM
+
+`./Scripts/test-code-region.sh` runs on the Mac itself: it claims the code
+region below 64 GiB, as an iPhone does, while other threads map memory, and
+fails if the claim replaced any of theirs.
+
 ### IPA
 
 The `ipa` workflow builds an unsigned IPA from the same pinned libraries: run
