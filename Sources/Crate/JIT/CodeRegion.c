@@ -81,45 +81,76 @@ static uint64_t find_gap(uint64_t from, uint64_t to, size_t size) {
     }
 }
 
+/* Maps `size` bytes executable at `at`, where find_gap found nothing mapped,
+   unless something has been mapped there since: another thread's malloc or a
+   new thread's stack can land in the gap between the walk and here, and
+   MAP_FIXED by itself would replace it under whoever was using it. So the
+   addresses are first reserved with vm_allocate, which fails where anything is
+   mapped, and MAP_FIXED then replaces only that reservation: the mapping it
+   leaves is the one it always made, executable from the start (the order iOS
+   needs, see crate_code_region_finish). MAP_FAILED with EEXIST if the gap
+   was taken. */
+static void *map_in_gap(uint64_t at, size_t size) {
+    vm_address_t reserved = (vm_address_t)at;
+    kern_return_t kr = vm_allocate(mach_task_self(), &reserved, size, VM_FLAGS_FIXED);
+    if (kr != KERN_SUCCESS) {
+        errno = kr == KERN_NO_SPACE ? EEXIST : ENOMEM;
+        return MAP_FAILED;
+    }
+    void *placed = mmap((void *)at, size, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
+    if (placed == MAP_FAILED) {
+        int saved = errno;
+        vm_deallocate(mach_task_self(), reserved, size);
+        errno = saved;
+    }
+    return placed;
+}
+
 static void *map_executable(size_t *size_io, size_t min_size, bool below_64_gib) {
-    size_t size = *size_io;
+    size_t wanted = *size_io;
     void *first = NULL;
 #if DEBUG
     /* Test hook: start where the crashes that found the 64 GiB limit had it. */
     if (getenv("CRATE_TEST_HIGH_REGION")) first = (void *)0x7000000000ULL;
 #endif
-    void *exec = mmap(first, size, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANON, -1, 0);
+    void *exec = mmap(first, wanted, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANON, -1, 0);
     crate_code_region_first_offer = exec == MAP_FAILED ? 0 : (uint64_t)exec;
     if (!below_64_gib) return exec;
     if (exec != MAP_FAILED) {
-        if ((uint64_t)exec + size <= AUTHORIZABLE_END) return exec;
-        munmap(exec, size);
+        if ((uint64_t)exec + wanted <= AUTHORIZABLE_END) return exec;
+        munmap(exec, wanted);
     }
     /* Where iOS put it was too high (with extended virtual addressing it often
        is, and a hint lower isn't always taken): map it exactly into the lowest
        free gap above 4 GiB that ends below the limit, found by walking our own
-       address space. */
-    uint64_t gap = find_gap(4ULL << 30, AUTHORIZABLE_END, size);
-    if (gap == 0) {
-        /* How much room there is below the limit depends on where iOS put
-           everything else this launch: settle for the largest gap, when it's
-           big enough to be worth having. The failed walk measured it all. */
-        size_t largest = (size_t)(crate_code_region_largest_gap >> 20 << 20);
-        if (largest == 0 || largest < min_size) {
-            errno = ENOMEM;
-            return MAP_FAILED;
-        }
-        size = largest;
-        gap = find_gap(4ULL << 30, AUTHORIZABLE_END, size);
-        crate_code_region_largest_gap = largest;
+       address space. A gap taken between the walk and the mapping is walked
+       for again, a few times at most. */
+    for (int attempt = 0; attempt < 8; attempt++) {
+        size_t size = wanted;
+        uint64_t gap = find_gap(4ULL << 30, AUTHORIZABLE_END, size);
         if (gap == 0) {
-            errno = ENOMEM;
-            return MAP_FAILED;
+            /* How much room there is below the limit depends on where iOS put
+               everything else this launch: settle for the largest gap, when it's
+               big enough to be worth having. The failed walk measured it all. */
+            size_t largest = (size_t)(crate_code_region_largest_gap >> 20 << 20);
+            if (largest == 0 || largest < min_size) {
+                errno = ENOMEM;
+                return MAP_FAILED;
+            }
+            size = largest;
+            gap = find_gap(4ULL << 30, AUTHORIZABLE_END, size);
+            crate_code_region_largest_gap = largest;
+            if (gap == 0) continue;
         }
+        void *placed = map_in_gap(gap, size);
+        if (placed != MAP_FAILED) {
+            *size_io = size;
+            return placed;
+        }
+        if (errno != EEXIST) return MAP_FAILED;
     }
-    void *placed = mmap((void *)gap, size, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
-    if (placed != MAP_FAILED) *size_io = size;
-    return placed;
+    errno = ENOMEM;
+    return MAP_FAILED;
 }
 
 
