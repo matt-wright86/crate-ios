@@ -440,6 +440,7 @@ struct AccountSheet: View {
                     Button("Install") {
                         onInstall(SeedDisk(user: user, password: password, hostname: hostname,
                                            timeZone: TimeZone.current.identifier,
+                                           adminGroup: image.distribution.adminGroup,
                                            vendorData: image.vendorData))
                     }
                     .disabled(!userValid || password.isEmpty || !hostnameValid)

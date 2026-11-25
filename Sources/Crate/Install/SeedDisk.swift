@@ -16,14 +16,28 @@ struct SeedDisk {
     let password: String
     let hostname: String
     let timeZone: String
+    /// The group that makes the account an administrator to polkit as well as
+    /// sudo (Distribution.adminGroup).
+    let adminGroup: String
     let vendorData: String?
 
     /// A user name Linux accepts: lowercase letters, digits, "_" and "-",
     /// starting with a letter or "_", at most 32 characters.
     static func isValid(user: String) -> Bool {
         user.wholeMatch(of: #/[a-z_][a-z0-9_-]{0,31}/#) != nil
-            && !["root", "daemon", "bin", "sys", "nobody"].contains(user)
+            && !reservedUsers.contains(user)
     }
+
+    /// Accounts the images already have, or a package they carry makes, that
+    /// cloud-init would then change instead of making the owner's: the system's
+    /// own, and the display managers' and polkit's, which the desktop needs.
+    private static let reservedUsers: Set = [
+        "root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news",
+        "uucp", "proxy", "www-data", "backup", "list", "irc", "nobody", "messagebus",
+        "systemd-network", "systemd-resolve", "systemd-timesync", "polkitd", "sshd",
+        "gdm", "sddm", "lightdm", "avahi", "colord", "rtkit", "pulse", "geoclue",
+        "dbus", "http", "ftp", "git", "alpm", "_apt",
+    ]
 
     /// A hostname: lowercase letters, digits and "-", not starting or ending with "-".
     static func isValid(hostname: String) -> Bool {
@@ -38,6 +52,7 @@ struct SeedDisk {
           - name: \(user)
             gecos: \(user)
             shell: /bin/bash
+            groups: [\(adminGroup)]
             sudo: ALL=(ALL) ALL
             lock_passwd: false
             passwd: "\(SHA512Crypt.hash(password))"

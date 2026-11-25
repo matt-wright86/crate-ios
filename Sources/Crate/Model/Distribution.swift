@@ -33,11 +33,20 @@ struct Distribution: Identifiable, Hashable {
     /// accent, which means "tappable"): pink for Debian's red, indigo for
     /// Arch's blue, orange for Ubuntu's, teal for Omarchy.
     let color: Color
+    /// The group polkit takes for administrators, which the owner's account
+    /// joins so the desktop's password prompts accept their password: "sudo"
+    /// on Debian and Ubuntu, "wheel" on Arch and what's built on it. sudo
+    /// alone isn't enough, since polkit never reads sudoers.
+    let adminGroup: String
 
-    static let debian = Distribution(id: "debian", name: "Debian", family: .linux, color: .pink)
-    static let ubuntu = Distribution(id: "ubuntu", name: "Ubuntu", family: .linux, color: .orange)
-    static let arch = Distribution(id: "arch", name: "Arch Linux", family: .linux, color: .indigo)
-    static let omarchy = Distribution(id: "omarchy", name: "Omarchy", family: .linux, color: .teal)
+    static let debian = Distribution(id: "debian", name: "Debian", family: .linux, color: .pink,
+                                     adminGroup: "sudo")
+    static let ubuntu = Distribution(id: "ubuntu", name: "Ubuntu", family: .linux, color: .orange,
+                                     adminGroup: "sudo")
+    static let arch = Distribution(id: "arch", name: "Arch Linux", family: .linux, color: .indigo,
+                                   adminGroup: "wheel")
+    static let omarchy = Distribution(id: "omarchy", name: "Omarchy", family: .linux, color: .teal,
+                                      adminGroup: "wheel")
 
     static let all: [Distribution] = [.debian, .ubuntu, .arch, .omarchy]
 

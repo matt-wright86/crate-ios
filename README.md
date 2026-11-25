@@ -280,6 +280,11 @@ this project's own, `com.amendez.crate`.
   an external monitor, open Settings → Displays inside the VM and pick a
   resolution with the monitor's aspect ratio, such as 1920 × 1080 for a 16:9
   monitor.
+- **The desktop asks for an admin password yours doesn't unlock.** VMs
+  installed before this was fixed made your account a sudo user but not an
+  administrator to the desktop. In the VM's terminal, run
+  `sudo usermod -aG sudo $USER` on Debian or Ubuntu, or
+  `sudo usermod -aG wheel $USER` on Arch, then log out and back in.
 
 ## License
 
