@@ -21,6 +21,7 @@ struct CrateApp: App {
         let memory = MemoryReport()
         AppLog.write("memory: physical \(memory.physical), limit \(memory.limit.map(String.init) ?? "n/a"), "
                      + "available \(memory.available.map(String.init) ?? "n/a"), footprint \(memory.footprint) bytes")
+        GPUEnvironment.prepare()
         options = LaunchOptions.parse(ProcessInfo.processInfo.arguments)
         options.applyToDefaults()
         let store = MachineStore()

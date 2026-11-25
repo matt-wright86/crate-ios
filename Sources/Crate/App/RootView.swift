@@ -31,6 +31,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 /// The three tabs, and the running VM over them.
 struct RootView: View {
     @Environment(JITSession.self) private var jit
+    @Environment(MachineRunner.self) private var runner
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(SettingsKey.jitAtLaunch) private var jitAtLaunch = true
     @AppStorage(SettingsKey.jitMethod) private var jitMethod = JITMethod.standard.rawValue
@@ -76,8 +77,15 @@ struct RootView: View {
         }
         .task { openLaunchTab() }
         .onChange(of: jit.state, initial: true) { launchSettled() }
-        // Back from LocalDevVPN, if turning JIT on was waiting for it.
-        .onChange(of: scenePhase) { if scenePhase == .active { jit.cameToFront() } }
+        .onChange(of: scenePhase) {
+            // In the log, for what became of a VM while crate wasn't in front:
+            // iOS suspends crate there, and refuses the guest's GPU work.
+            if runner.isRunning {
+                AppLog.write("app: crate is \(scenePhase == .active ? "in front" : scenePhase == .inactive ? "inactive" : "in the background"), with a VM running")
+            }
+            // Back from LocalDevVPN, if turning JIT on was waiting for it.
+            if scenePhase == .active { jit.cameToFront() }
+        }
     }
 
     private var tabs: some View {
