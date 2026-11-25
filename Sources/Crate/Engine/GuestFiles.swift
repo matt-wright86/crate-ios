@@ -24,6 +24,13 @@ struct GuestFiles {
     var seed: URL { directory.appendingPathComponent("seed.img") }
     /// Its screen as it was when last stopped, for its card on Home.
     var preview: URL { directory.appendingPathComponent("preview.jpg") }
+    /// A copy of its entry in the list (MachineStore), so the folder says
+    /// whose it is when the list can't.
+    var record: URL { Self.record(in: directory) }
+
+    static func record(in directory: URL) -> URL {
+        directory.appendingPathComponent("machine.json")
+    }
 
     var exists: Bool { FileManager.default.fileExists(atPath: directory.path) }
 
