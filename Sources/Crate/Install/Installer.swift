@@ -51,9 +51,9 @@ final class Installer {
                      + "footprint \(MemoryReport().footprint >> 20) MiB")
         let reporter = Reporter { [weak self] phase in self?.phase = phase }
         // Locking the screen would suspend crate and end the install.
-        UIApplication.shared.isIdleTimerDisabled = true
+        ScreenAwake.set(.install, true)
         task = Task {
-            defer { UIApplication.shared.isIdleTimerDisabled = false }
+            defer { ScreenAwake.set(.install, false) }
             do {
                 try await Self.run(image, files: files, diskBytes: Int64(diskGB) << 30, owner: owner,
                                    instance: machine.id, reporter: reporter)

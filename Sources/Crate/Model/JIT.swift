@@ -29,6 +29,8 @@ enum SettingsKey {
     static let codeRegionMB = "jit.codeRegionMB"
     static let installMemoryGB = "install.memoryGB"
     static let installDiskGB = "install.diskGB"
+    /// Whether a running VM keeps the screen from locking. On unless turned off.
+    static let keepScreenOn = "screen.keepOnWhileRunning"
     /// Settings > Logs: whether crate logs at all, and whether it logs its
     /// memory while a VM runs. Both on unless turned off.
     static let logsEnabled = "logs.enabled"

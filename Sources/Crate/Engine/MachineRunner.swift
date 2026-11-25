@@ -27,7 +27,10 @@ final class MachineRunner {
         case failed(String)
     }
 
-    private(set) var phase = Phase.idle
+    private(set) var phase = Phase.idle {
+        // Locking the screen would suspend crate, and the VM with it.
+        didSet { ScreenAwake.set(.machine, isRunning) }
+    }
     /// The VM this runner is running, or last ran.
     private(set) var machineID: Machine.ID?
     let console = ConsoleBridge()

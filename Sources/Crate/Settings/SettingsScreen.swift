@@ -11,6 +11,7 @@ struct SettingsScreen: View {
     @AppStorage(SettingsKey.jitMethod) private var jitMethod = JITMethod.standard.rawValue
     @AppStorage(SettingsKey.jitAtLaunch) private var jitAtLaunch = true
     @AppStorage(SettingsKey.codeRegionMB) private var codeRegionMB = CodeRegion.standard
+    @AppStorage(SettingsKey.keepScreenOn) private var keepScreenOn = true
     @AppStorage(SettingsKey.logsEnabled) private var logsEnabled = true
     @AppStorage(SettingsKey.logsTrackMemory) private var trackMemory = true
 
@@ -23,6 +24,7 @@ struct SettingsScreen: View {
             Form {
                 jitSection
                 memorySection
+                screenSection
                 logsSection
                 aboutSection
             }
@@ -163,6 +165,19 @@ struct SettingsScreen: View {
         while !Task.isCancelled {
             withAnimation { memory = MemoryReport() }
             try? await Task.sleep(for: .seconds(3))
+        }
+    }
+
+    // MARK: - Screen
+
+    private var screenSection: some View {
+        Section {
+            Toggle("Keep the screen on while a VM runs", isOn: $keepScreenOn)
+                .onChange(of: keepScreenOn) { ScreenAwake.apply() }
+        } header: {
+            Text("Screen")
+        } footer: {
+            Text("iOS pauses crate, and the VM in it, soon after the screen locks, and may close crate while it's paused.")
         }
     }
 
