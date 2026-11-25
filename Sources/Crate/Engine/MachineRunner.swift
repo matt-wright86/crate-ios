@@ -166,7 +166,7 @@ final class MachineRunner {
             initrd = files.initrd.path
             disk = files.disk.path
             seed = FileManager.default.fileExists(atPath: files.seed.path) ? files.seed.path : nil
-            commandLine = vm.cmdline ?? Self.commandLine
+            commandLine = Self.keptAwake(vm.cmdline ?? Self.commandLine)
             displayModes = display.modes(after: Self.modes(preferring: vm.display))
         }
 
@@ -204,6 +204,29 @@ final class MachineRunner {
             let headroom = 768
             let fits = max(leastMemoryMiB, (available - headroom) / 2 * 2)
             return min(asked, fits)
+        }
+
+        /// What puts a Linux system to sleep, by systemd's names.
+        static let sleepUnits = [
+            "sleep.target", "suspend.target", "hibernate.target",
+            "hybrid-sleep.target", "suspend-then-hibernate.target",
+        ]
+
+        /// `commandLine` with the guest kept from putting itself to sleep.
+        ///
+        /// A desktop left alone suspends: on an iPhone, Debian's KDE did 18
+        /// minutes after it started ("PM: suspend entry (s2idle)" on its
+        /// console). Nothing crate gives a guest wakes it again (the screen
+        /// stayed black, and typing at the serial console went unanswered),
+        /// so the VM could only be stopped, with whatever was open in it.
+        /// systemd masks the units named by systemd.mask= on the kernel's
+        /// command line, so a suspend that's asked for fails and the session
+        /// carries on. Here rather than in the images: it reaches VMs already
+        /// installed, on every distribution, at their next start.
+        static func keptAwake(_ commandLine: String) -> String {
+            let words = Set(commandLine.split(separator: " ").map(String.init))
+            let masks = sleepUnits.map { "systemd.mask=\($0)" }.filter { !words.contains($0) }
+            return ([commandLine] + masks).joined(separator: " ")
         }
 
         /// For a VM put on the iPhone by hand from aTerm's image, which has no
