@@ -25,6 +25,16 @@ enum AppLog {
     /// Lines written while iOS has crate prewarmed, before the log starts (see
     /// begin). Read and written under `lock`.
     private static var held: [String]?
+    /// The most a log holds. Past it the middle is taken out (trim), so it
+    /// keeps how the launch began and what happened last. Hours of a VM
+    /// running with its memory tracked come to far less; this is for whatever
+    /// writes without end. Exporting reads a log whole, so one that grew
+    /// without limit would also be one Settings couldn't open.
+    static let limit = 8 << 20
+    static let keptFromStart = 1 << 20
+    static let keptFromEnd = 3 << 20
+    /// The bytes in this launch's log. Read and written under `lock`.
+    private static var size = 0
 
     private static var enabled: Bool {
         get { enabledLock.withLock { enabledFlag } }
@@ -76,7 +86,11 @@ enum AppLog {
             try? files.removeItem(at: previousURL)
             if on {
                 try? files.moveItem(at: url, to: previousURL)
-                try? Data(lines.joined().utf8).write(to: url)
+                // One an earlier crate let grow without limit.
+                _ = trim(previousURL, over: limit, keepingFirst: keptFromStart, last: keptFromEnd)
+                let start = Data(lines.joined().utf8)
+                try? start.write(to: url)
+                size = start.count
             } else {
                 try? files.removeItem(at: url)
                 removeOtherLogs()
@@ -90,6 +104,7 @@ enum AppLog {
         lock.withLock {
             if on {
                 try? Data().write(to: url)
+                size = 0
             } else {
                 try? FileManager.default.removeItem(at: url)
                 try? FileManager.default.removeItem(at: previousURL)
@@ -126,10 +141,47 @@ enum AppLog {
                 return
             }
             guard let handle = try? FileHandle(forWritingTo: url) else { return }
-            defer { try? handle.close() }
             _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: Data(stamped.utf8))
+            let bytes = Data(stamped.utf8)
+            try? handle.write(contentsOf: bytes)
+            try? handle.close()
+            size += bytes.count
+            if size > limit {
+                // Whatever happens to the file, counted afresh from what's there.
+                size = trim(url, over: limit, keepingFirst: keptFromStart, last: keptFromEnd) ?? size
+            }
         }
+    }
+
+    /// Takes the middle out of the log at `url` if it holds more than `limit`
+    /// bytes: what's left is its first `head` bytes and its last `tail`, each
+    /// cut at a line's end, with a line between saying how much went. Never
+    /// reads more than those two pieces, however large the file. Returns the
+    /// bytes the file holds afterwards, or nil if it couldn't be read.
+    ///
+    /// The size is asked of the open file: a URL keeps an earlier answer, and
+    /// a size from before a trim would have the next one cut at the wrong
+    /// place.
+    @discardableResult
+    static func trim(_ url: URL, over limit: Int, keepingFirst head: Int, last tail: Int) -> Int? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let end = try? handle.seekToEnd() else { return nil }
+        let total = Int(end)
+        guard total > limit, head + tail < total else { return total }
+        let newline = UInt8(ascii: "\n")
+        guard (try? handle.seek(toOffset: 0)) != nil,
+              var first = try? handle.read(upToCount: head),
+              (try? handle.seek(toOffset: UInt64(total - tail))) != nil,
+              var last = try? handle.read(upToCount: tail) else { return total }
+        // Whole lines only: the first piece ends with one, the last begins with one.
+        if let end = first.lastIndex(of: newline) { first = first.prefix(through: end) }
+        if let start = last.firstIndex(of: newline) { last = last.suffix(from: last.index(after: start)) }
+        let removed = total - first.count - last.count
+        let note = "[ log ] \(removed) bytes taken out here: the log had reached \(total)\n"
+        let kept = first + Data(note.utf8) + last
+        guard (try? kept.write(to: url, options: .atomic)) != nil else { return total }
+        return kept.count
     }
 
     /// This launch's log.

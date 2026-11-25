@@ -42,11 +42,17 @@ final class MachineRunner {
     private let debugHooks = DebugHooks()
     #endif
 
+    /// The engine's lines on their way to the log: it can repeat one
+    /// thousands of times a second.
+    nonisolated private static let engineLines = LogSquelch()
+
     init() {
         crate_set_log_callback({ _, level, message in
             guard let message else { return }
             let tag = level == CRATE_LOG_ERROR ? "crate error: " : level == CRATE_LOG_WARN ? "crate warning: " : "crate: "
-            AppLog.write(tag + String(cString: message))
+            let lines = MachineRunner.engineLines.admit(tag + String(cString: message),
+                                                        at: ProcessInfo.processInfo.systemUptime)
+            for line in lines { AppLog.write(line) }
         }, nil, Self.logLevel)
     }
 
@@ -299,6 +305,7 @@ final class MachineRunner {
         case CRATE_STOP_KILLED: text = "The VM was stopped."
         default: text = "The VM stopped: \(error ?? "crate gave no reason")."
         }
+        for line in Self.engineLines.flush() { AppLog.write(line) }
         AppLog.write("vm: \(text)")
         memoryLog.stop()
         #if DEBUG
