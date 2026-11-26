@@ -54,9 +54,10 @@ uint64_t crate_code_region_first_offer;
 uint64_t crate_code_region_largest_gap;
 
 /* The lowest gap of at least `size` bytes in this task's address space between
-   `from` and `to`, page-aligned, found by walking its regions; 0 if none. Also
-   notes the largest gap seen, for the log. */
-static uint64_t find_gap(uint64_t from, uint64_t to, size_t size) {
+   `from` and `to`, page-aligned, found by walking its regions, with how long
+   it is in `*length`; 0 if none. Also notes the largest gap seen, for the
+   log. */
+static uint64_t find_gap(uint64_t from, uint64_t to, size_t size, uint64_t *length) {
     vm_address_t address = (vm_address_t)from;
     uint64_t cursor = from;
     crate_code_region_largest_gap = 0;
@@ -73,7 +74,10 @@ static uint64_t find_gap(uint64_t from, uint64_t to, size_t size) {
         if (next > cursor) {
             uint64_t gap = next - cursor;
             if (gap > crate_code_region_largest_gap) crate_code_region_largest_gap = gap;
-            if (gap >= size) return cursor;
+            if (gap >= size) {
+                *length = gap;
+                return cursor;
+            }
         }
         if (kr != KERN_SUCCESS || (uint64_t)address >= to) return 0;
         cursor = (uint64_t)address + region_size;
@@ -127,7 +131,8 @@ static void *map_executable(size_t *size_io, size_t min_size, bool below_64_gib)
        for again, a few times at most. */
     for (int attempt = 0; attempt < 8; attempt++) {
         size_t size = wanted;
-        uint64_t gap = find_gap(4ULL << 30, AUTHORIZABLE_END, size);
+        uint64_t length = 0;
+        uint64_t gap = find_gap(4ULL << 30, AUTHORIZABLE_END, size, &length);
         if (gap == 0) {
             /* How much room there is below the limit depends on where iOS put
                everything else this launch: settle for the largest gap, when it's
@@ -138,10 +143,15 @@ static void *map_executable(size_t *size_io, size_t min_size, bool below_64_gib)
                 return MAP_FAILED;
             }
             size = largest;
-            gap = find_gap(4ULL << 30, AUTHORIZABLE_END, size);
+            gap = find_gap(4ULL << 30, AUTHORIZABLE_END, size, &length);
             crate_code_region_largest_gap = largest;
             if (gap == 0) continue;
         }
+        /* The gap's start is where the kernel puts whatever is mapped next, so
+           a thread that maps steadily has taken it again by each new claim: 8
+           in a row were lost that way. After the first, claim the gap's end,
+           where nothing is headed. */
+        if (attempt > 0) gap += length - size;
         void *placed = map_in_gap(gap, size);
         if (placed != MAP_FAILED) {
             *size_io = size;
